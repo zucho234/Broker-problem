@@ -1,8 +1,13 @@
 package pl.projekt;
 
+import javax.swing.SwingUtilities;
+
 public class Main {
     public static void main(String[] args)
     {
-        System.out.println("Projekt: Problem pośrednika");
+        SwingUtilities.invokeLater(() -> {
+            AppFrame app = new AppFrame();
+            app.setVisible(true);
+        });
     }
 }
