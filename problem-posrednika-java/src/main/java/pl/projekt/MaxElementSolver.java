@@ -6,10 +6,11 @@ import java.util.List;
 
 public class MaxElementSolver {
     public TransportResult solve(TransportProblem problem) {
-        int[][] profits = problem.calculateProfitMatrix();
-        int[] supply = Arrays.copyOf(problem.getSupply(), problem.getSupply().length);
-        int[] demand = Arrays.copyOf(problem.getDemand(), problem.getDemand().length);
-        boolean[][] blocked = problem.getBlocked();
+        TransportProblem balancedProblem = problem.balanced();
+        int[][] profits = balancedProblem.calculateProfitMatrix();
+        int[] supply = Arrays.copyOf(balancedProblem.getSupply(), balancedProblem.getSupply().length);
+        int[] demand = Arrays.copyOf(balancedProblem.getDemand(), balancedProblem.getDemand().length);
+        boolean[][] blocked = balancedProblem.getBlocked();
 
         int suppliers = supply.length;
         int receivers = demand.length;
@@ -40,11 +41,19 @@ public class MaxElementSolver {
 
             int amount = Math.min(supply[bestSupplier], demand[bestReceiver]);
 
-            allocation[bestSupplier][bestReceiver] = amount;
+            allocation[bestSupplier][bestReceiver] += amount;
             supply[bestSupplier] -= amount;
             demand[bestReceiver] -= amount;
 
-            steps.add(new IterationStep(bestSupplier, bestReceiver, bestProfit, amount));
+            steps.add(new IterationStep(
+                    bestSupplier,
+                    bestReceiver,
+                    bestProfit,
+                    amount,
+                    allocation,
+                    supply,
+                    demand
+            ));
         }
 
         int totalProfit = 0;
@@ -55,7 +64,12 @@ public class MaxElementSolver {
             }
         }
 
-        return new TransportResult(allocation, totalProfit, steps);
+        boolean feasible = !hasPositive(supply) && !hasPositive(demand);
+        String message = feasible
+                ? "Rozwiązanie znalezione."
+                : "Nie udało się zrealizować całego popytu lub podaży. Sprawdź blokady tras.";
+
+        return new TransportResult(allocation, totalProfit, steps, balancedProblem, feasible, message);
     }
 
     private boolean hasPositive(int[] array) {
