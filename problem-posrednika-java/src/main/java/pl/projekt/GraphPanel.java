@@ -93,7 +93,7 @@ public class GraphPanel extends JPanel {
     }
 
     private void drawEdgeLabel(Graphics2D g, Point from, Point to, int amount, int profit, boolean blocked) {
-        String text = blocked ? "X" : amount + " | z=" + profit;
+        String text = blocked ? "X" : amount + " | z=" + formatProfit(profit);
         int x = (from.x + to.x) / 2;
         int y = (from.y + to.y) / 2;
 
@@ -167,5 +167,12 @@ public class GraphPanel extends JPanel {
             return supplier ? "Fd" : "Fo";
         }
         return (supplier ? "D" : "O") + (index + 1);
+    }
+
+    private String formatProfit(int profit) {
+        if (profit <= TransportProblem.BIG_NEGATIVE / 2) {
+            return "-M";
+        }
+        return String.valueOf(profit);
     }
 }

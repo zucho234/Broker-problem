@@ -3,6 +3,8 @@ package pl.projekt;
 import java.util.Arrays;
 
 public class TransportProblem {
+    public static final int BIG_NEGATIVE = -1_000_000;
+
     private final int[][] transportCosts;
     private final int[] supply;
     private final int[] demand;
@@ -78,13 +80,28 @@ public class TransportProblem {
         for (int i = 0 ; i<suppliers ; i++ ) {
             for (int j = 0 ; j<receivers ; j++ ) {
                 if (fakeSuppliers[i] || fakeReceivers[j]) {
-                    profits[i][j] = 0;
+                    profits[i][j] = supplierHasBlockedRoute(i) && fakeReceivers[j] && !fakeSuppliers[i]
+                            ? BIG_NEGATIVE
+                            : 0;
                 } else {
                     profits[i][j] = sellingPrices[j] - purchasePrices[i] - transportCosts[i][j];
                 }
             }
         }
         return profits;
+    }
+
+    public boolean supplierHasBlockedRoute(int supplier) {
+        if (supplier < 0 || supplier >= blocked.length || fakeSuppliers[supplier]) {
+            return false;
+        }
+
+        for (int j = 0; j < blocked[supplier].length; j++) {
+            if (!fakeReceivers[j] && blocked[supplier][j]) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public TransportProblem balanced() {

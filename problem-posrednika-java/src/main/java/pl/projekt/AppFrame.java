@@ -246,7 +246,7 @@ public class AppFrame extends JFrame {
         for (int i = 0; i < profits.length; i++) {
             text.append(supplierName(problem, i)).append("\t");
             for (int j = 0; j < profits[i].length; j++) {
-                text.append(problem.getBlocked()[i][j] ? "X" : profits[i][j]).append("\t");
+                text.append(problem.getBlocked()[i][j] ? "X" : formatProfit(profits[i][j])).append("\t");
             }
             text.append("\n");
         }
@@ -267,6 +267,8 @@ public class AppFrame extends JFrame {
             counter++;
         }
 
+        appendOptimizationSteps(text, result, problem);
+
         text.append("\nMACIERZ PRZYDZIAŁÓW:\n");
         appendHeader(text, problem);
         for (int i = 0; i < allocation.length; i++) {
@@ -277,7 +279,7 @@ public class AppFrame extends JFrame {
             text.append("\n");
         }
 
-        text.append("\nŁączny zysk: ").append(result.getTotalProfit());
+        text.append("\nŁączny zysk z funkcji celu: ").append(formatProfit(result.getTotalProfit()));
         appendFinancialSummary(text, problem, allocation);
         if (!result.isFeasible()) {
             text.append("\n\nPozostały niezrealizowany popyt/podaż wynika najczęściej ze zbyt wielu blokad tras.");
@@ -300,6 +302,111 @@ public class AppFrame extends JFrame {
             text.append("Problem został zbilansowany przez dodanie fikcyjnego dostawcy Fd i fikcyjnego odbiorcy Fo.\n\n");
         } else {
             text.append("Problem był zbilansowany bez dodawania fikcyjnych uczestników.\n\n");
+        }
+
+        boolean hasBlockedSupplier = false;
+        for (int i = 0; i < problem.getSupplierCount(); i++) {
+            hasBlockedSupplier = hasBlockedSupplier || problem.supplierHasBlockedRoute(i);
+        }
+        if (hasBlockedSupplier) {
+            text.append("Dla dostawcy z blokadą trasa do Fo ma zysk -M, aby wymusić priorytet obsadzenia jego rzeczywistych tras.\n\n");
+        }
+    }
+
+    private void appendOptimizationSteps(StringBuilder text, TransportResult result, TransportProblem problem) {
+        int counter = 1;
+        for (OptimizationStep step : result.getOptimizationSteps()) {
+            text.append("\nITERACJA OPTYMALIZACJI ").append(counter).append(":\n");
+            text.append("Potencjały Alfa i:\n");
+            appendVector(text, step.getAlpha(), true, problem);
+            text.append("Potencjały Beta j:\n");
+            appendVector(text, step.getBeta(), false, problem);
+
+            text.append("Delty dla tras niebazowych Dij = Zij - Alfa i - Beta j:\n");
+            appendDeltaMatrix(text, step, problem);
+
+            if (step.isOptimal()) {
+                text.append("Wszystkie delty są niedodatnie, więc rozwiązanie jest optymalne.\n");
+            } else {
+                text.append("Węzeł centralny: ")
+                        .append(supplierName(problem, step.getEnteringSupplier()))
+                        .append(" -> ")
+                        .append(receiverName(problem, step.getEnteringReceiver()))
+                        .append(", delta = ")
+                        .append(step.getDeltas()[step.getEnteringSupplier()][step.getEnteringReceiver()])
+                        .append("\n");
+                text.append("Pętla zmian (+/-), przesunięcie theta = ")
+                        .append(step.getTheta())
+                        .append(":\n");
+                appendCycleMatrix(text, step, problem);
+                text.append("Plan po zmianie:\n");
+                appendAllocationMatrix(text, step.getAllocationAfter(), problem);
+            }
+            counter++;
+        }
+    }
+
+    private void appendVector(StringBuilder text, Integer[] values, boolean suppliers, TransportProblem problem) {
+        for (int i = 0; i < values.length; i++) {
+            text.append(suppliers ? supplierName(problem, i) : receiverName(problem, i))
+                    .append("=")
+                    .append(values[i])
+                    .append(" ");
+        }
+        text.append("\n");
+    }
+
+    private void appendDeltaMatrix(StringBuilder text, OptimizationStep step, TransportProblem problem) {
+        int[][] deltas = step.getDeltas();
+        boolean[][] basis = step.getBasisBefore();
+
+        appendHeader(text, problem);
+        for (int i = 0; i < deltas.length; i++) {
+            text.append(supplierName(problem, i)).append("\t");
+            for (int j = 0; j < deltas[i].length; j++) {
+                if (basis[i][j]) {
+                    text.append("X");
+                } else {
+                    text.append(formatProfit(deltas[i][j]));
+                    if (!step.isOptimal() && i == step.getEnteringSupplier() && j == step.getEnteringReceiver()) {
+                        text.append("(+)");
+                    }
+                }
+                text.append("\t");
+            }
+            text.append("\n");
+        }
+    }
+
+    private void appendCycleMatrix(StringBuilder text, OptimizationStep step, TransportProblem problem) {
+        int[][] signs = step.getCycleSigns();
+        int[][] allocation = step.getAllocationBefore();
+
+        appendHeader(text, problem);
+        for (int i = 0; i < signs.length; i++) {
+            text.append(supplierName(problem, i)).append("\t");
+            for (int j = 0; j < signs[i].length; j++) {
+                if (signs[i][j] == 1) {
+                    text.append(allocation[i][j]).append("(+)");
+                } else if (signs[i][j] == -1) {
+                    text.append(allocation[i][j]).append("(-)");
+                } else {
+                    text.append(".");
+                }
+                text.append("\t");
+            }
+            text.append("\n");
+        }
+    }
+
+    private void appendAllocationMatrix(StringBuilder text, int[][] allocation, TransportProblem problem) {
+        appendHeader(text, problem);
+        for (int i = 0; i < allocation.length; i++) {
+            text.append(supplierName(problem, i)).append("\t");
+            for (int j = 0; j < allocation[i].length; j++) {
+                text.append(allocation[i][j]).append("\t");
+            }
+            text.append("\n");
         }
     }
 
@@ -424,6 +531,13 @@ public class AppFrame extends JFrame {
 
     private String receiverName(TransportProblem problem, int index) {
         return problem.isFakeReceiver(index) ? "Fo" : "O" + (index + 1);
+    }
+
+    private String formatProfit(int value) {
+        if (value <= TransportProblem.BIG_NEGATIVE / 2) {
+            return "-M";
+        }
+        return String.valueOf(value);
     }
 
     private void showError(String message) {
