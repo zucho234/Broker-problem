@@ -11,6 +11,7 @@ public class TransportProblem {
     private final int[] purchasePrices;
     private final int[] sellingPrices;
     private final boolean[][] blocked;
+    private final boolean[] blockedSuppliers;
     private final boolean[] fakeSuppliers;
     private final boolean[] fakeReceivers;
 
@@ -23,6 +24,21 @@ public class TransportProblem {
                 sellingPrices,
                 blocked,
                 new boolean[supply.length],
+                new boolean[supply.length],
+                new boolean[demand.length]
+        );
+    }
+
+    public TransportProblem(int[][] transportCosts, int[] supply, int[] demand, int[] purchasePrices, int[] sellingPrices, boolean[][] blocked, boolean[] blockedSuppliers) {
+        this(
+                transportCosts,
+                supply,
+                demand,
+                purchasePrices,
+                sellingPrices,
+                blocked,
+                blockedSuppliers,
+                new boolean[supply.length],
                 new boolean[demand.length]
         );
     }
@@ -34,6 +50,7 @@ public class TransportProblem {
             int[] purchasePrices,
             int[] sellingPrices,
             boolean[][] blocked,
+            boolean[] blockedSuppliers,
             boolean[] fakeSuppliers,
             boolean[] fakeReceivers
     ) {
@@ -43,9 +60,11 @@ public class TransportProblem {
         this.purchasePrices = Arrays.copyOf(purchasePrices, purchasePrices.length);
         this.sellingPrices = Arrays.copyOf(sellingPrices, sellingPrices.length);
         this.blocked = copyMatrix(blocked);
+        this.blockedSuppliers = Arrays.copyOf(blockedSuppliers, blockedSuppliers.length);
         this.fakeSuppliers = Arrays.copyOf(fakeSuppliers, fakeSuppliers.length);
         this.fakeReceivers = Arrays.copyOf(fakeReceivers, fakeReceivers.length);
     }
+
 
     public int[][] getTransportCosts() { return transportCosts; }
     public int[] getSupply() { return supply; }
@@ -53,6 +72,7 @@ public class TransportProblem {
     public int[] getPurchasePrices() { return purchasePrices; }
     public int[] getSellingPrices() { return sellingPrices; }
     public boolean[][] getBlocked() { return blocked; }
+    public boolean[] getBlockedSuppliers() { return blockedSuppliers; }
     public boolean[] getFakeSuppliers() { return fakeSuppliers; }
     public boolean[] getFakeReceivers() { return fakeReceivers; }
 
@@ -62,6 +82,10 @@ public class TransportProblem {
 
     public boolean isFakeReceiver(int index) {
         return fakeReceivers[index];
+    }
+
+    public boolean isBlockedSupplier(int index) {
+        return index >= 0 && index < blockedSuppliers.length && blockedSuppliers[index];
     }
 
     public int getSupplierCount() {
@@ -80,9 +104,11 @@ public class TransportProblem {
         for (int i = 0 ; i<suppliers ; i++ ) {
             for (int j = 0 ; j<receivers ; j++ ) {
                 if (fakeSuppliers[i] || fakeReceivers[j]) {
-                    profits[i][j] = supplierHasBlockedRoute(i) && fakeReceivers[j] && !fakeSuppliers[i]
-                            ? BIG_NEGATIVE
-                            : 0;
+                    if (!fakeSuppliers[i] && fakeReceivers[j] && isBlockedSupplier(i)) {
+                        profits[i][j] = BIG_NEGATIVE;
+                    } else {
+                        profits[i][j] = 0;
+                    }
                 } else {
                     profits[i][j] = sellingPrices[j] - purchasePrices[i] - transportCosts[i][j];
                 }
@@ -92,16 +118,7 @@ public class TransportProblem {
     }
 
     public boolean supplierHasBlockedRoute(int supplier) {
-        if (supplier < 0 || supplier >= blocked.length || fakeSuppliers[supplier]) {
-            return false;
-        }
-
-        for (int j = 0; j < blocked[supplier].length; j++) {
-            if (!fakeReceivers[j] && blocked[supplier][j]) {
-                return true;
-            }
-        }
-        return false;
+        return isBlockedSupplier(supplier);
     }
 
     public TransportProblem balanced() {
@@ -121,10 +138,12 @@ public class TransportProblem {
 
         int[] newDemand = Arrays.copyOf(demand, receivers + 1);
         int[] newSellingPrices = Arrays.copyOf(sellingPrices, receivers + 1);
+        boolean[] newBlockedSuppliers = Arrays.copyOf(blockedSuppliers, suppliers + 1);
         boolean[] newFakeReceivers = Arrays.copyOf(fakeReceivers, receivers + 1);
 
         newDemand[receivers] = totalSupply;
         newSellingPrices[receivers] = 0;
+        newBlockedSuppliers[suppliers] = false;
         newFakeReceivers[receivers] = true;
 
         int[] newSupply = Arrays.copyOf(supply, suppliers + 1);
@@ -147,6 +166,7 @@ public class TransportProblem {
                 newPurchasePrices,
                 newSellingPrices,
                 newBlocked,
+                newBlockedSuppliers,
                 newFakeSuppliers,
                 newFakeReceivers
         );

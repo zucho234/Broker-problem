@@ -1,6 +1,7 @@
 package pl.projekt;
 
 import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -16,6 +17,7 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellEditor;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.Font;
 
 public class AppFrame extends JFrame {
     private static final int MAX_PARTICIPANTS = 10;
@@ -23,7 +25,7 @@ public class AppFrame extends JFrame {
     private JTextField suppliersField;
     private JTextField receiversField;
     private JTable dataTable;
-    private JTextArea resultArea;
+    private JPanel resultStepsPanel;
     private GraphPanel graphPanel;
     private JLabel iterationLabel;
     private JButton previousButton;
@@ -34,7 +36,7 @@ public class AppFrame extends JFrame {
 
     public AppFrame() {
         setTitle("Problem pośrednika");
-        setSize(1250, 820);
+        setSize(1650, 1080);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -76,12 +78,11 @@ public class AppFrame extends JFrame {
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         dataTable.setRowHeight(28);
         dataTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
-        dataTable.setToolTipText("Wpisz X w komórce kosztu, aby zablokować trasę.");
+        dataTable.setToolTipText("Koszty transportu wpisuj jako liczby. W kolumnie Blokada wpisz X, aby zablokować dostawcę.");
 
-        resultArea = new JTextArea();
-        resultArea.setEditable(false);
-        resultArea.setRows(12);
-        resultArea.setText("Wprowadź koszty transportu, podaż, popyt oraz ceny. W komórce trasy można wpisać X, aby ją zablokować.");
+        resultStepsPanel = new JPanel();
+        resultStepsPanel.setLayout(new BoxLayout(resultStepsPanel, BoxLayout.Y_AXIS));
+        addResultBlock("Informacja", "Wprowadź koszty transportu, podaż, popyt oraz ceny. W kolumnie Blokada wpisz X, aby zablokować dostawcę.");
 
         graphPanel = new GraphPanel();
 
@@ -91,7 +92,9 @@ public class AppFrame extends JFrame {
 
         JPanel resultPanel = new JPanel(new BorderLayout());
         resultPanel.setBorder(BorderFactory.createTitledBorder("Wyniki obliczeń"));
-        resultPanel.add(new JScrollPane(resultArea), BorderLayout.CENTER);
+        JScrollPane resultScrollPane = new JScrollPane(resultStepsPanel);
+        resultScrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        resultPanel.add(resultScrollPane, BorderLayout.CENTER);
 
         JPanel graphWrapper = new JPanel(new BorderLayout());
         graphWrapper.setBorder(BorderFactory.createTitledBorder("Graf iteracji"));
@@ -117,15 +120,16 @@ public class AppFrame extends JFrame {
             int suppliers = parseCount(suppliersField.getText(), "dostawców");
             int receivers = parseCount(receiversField.getText(), "odbiorców");
 
-            String[] columns = new String[receivers + 3];
+            String[] columns = new String[receivers + 4];
             columns[0] = "";
             for (int i = 1; i <= receivers; i++) {
                 columns[i] = "O" + i;
             }
             columns[receivers + 1] = "Podaż";
             columns[receivers + 2] = "Cena zakupu";
+            columns[receivers + 3] = "Blokada";
 
-            String[][] data = new String[suppliers + 2][receivers + 3];
+            String[][] data = new String[suppliers + 2][receivers + 4];
 
             for (int i = 0; i < suppliers; i++) {
                 data[i][0] = "D" + (i + 1);
@@ -134,6 +138,7 @@ public class AppFrame extends JFrame {
                 }
                 data[i][receivers + 1] = "0";
                 data[i][receivers + 2] = "0";
+                data[i][receivers + 3] = "";
             }
 
             data[suppliers][0] = "Popyt";
@@ -142,6 +147,7 @@ public class AppFrame extends JFrame {
             }
             data[suppliers][receivers + 1] = "";
             data[suppliers][receivers + 2] = "";
+            data[suppliers][receivers + 3] = "";
 
             data[suppliers + 1][0] = "Cena sprzedaży";
             for (int j = 1; j <= receivers; j++) {
@@ -149,6 +155,7 @@ public class AppFrame extends JFrame {
             }
             data[suppliers + 1][receivers + 1] = "";
             data[suppliers + 1][receivers + 2] = "";
+            data[suppliers + 1][receivers + 3] = "";
 
             dataTable.setModel(new DefaultTableModel(data, columns) {
                 @Override
@@ -204,20 +211,17 @@ public class AppFrame extends JFrame {
         int[] purchasePrices = new int[suppliers];
         int[] sellingPrices = new int[receivers];
         boolean[][] blocked = new boolean[suppliers][receivers];
+        boolean[] blockedSuppliers = new boolean[suppliers];
 
         for (int i = 0; i < suppliers; i++) {
             for (int j = 0; j < receivers; j++) {
                 String value = cellValue(i, j + 1);
-                if (isBlockedValue(value)) {
-                    blocked[i][j] = true;
-                    transportCosts[i][j] = 0;
-                } else {
-                    transportCosts[i][j] = parseNonNegativeInt(value, "koszt transportu D" + (i + 1) + " -> O" + (j + 1));
-                }
+                transportCosts[i][j] = parseNonNegativeInt(value, "koszt transportu D" + (i + 1) + " -> O" + (j + 1));
             }
 
             supply[i] = parseNonNegativeInt(cellValue(i, receivers + 1), "podaż D" + (i + 1));
             purchasePrices[i] = parseNonNegativeInt(cellValue(i, receivers + 2), "cena zakupu D" + (i + 1));
+            blockedSuppliers[i] = isBlockedSupplierValue(cellValue(i, receivers + 3));
         }
 
         for (int j = 0; j < receivers; j++) {
@@ -229,64 +233,125 @@ public class AppFrame extends JFrame {
             throw new IllegalArgumentException("Suma podaży i suma popytu muszą być większe od zera.");
         }
 
-        return new TransportProblem(transportCosts, supply, demand, purchasePrices, sellingPrices, blocked);
+        return new TransportProblem(transportCosts, supply, demand, purchasePrices, sellingPrices, blocked, blockedSuppliers);
     }
 
     private void showResult(TransportResult result) {
-        StringBuilder text = new StringBuilder();
+        resultStepsPanel.removeAll();
+
         TransportProblem problem = result.getProblem();
         int[][] profits = problem.calculateProfitMatrix();
         int[][] allocation = result.getAllocation();
 
-        text.append(result.getMessage()).append("\n\n");
-        appendBalanceInfo(text, problem);
+        StringBuilder preparation = new StringBuilder();
+        preparation.append(result.getMessage()).append("\n\n");
+        appendBalanceInfo(preparation, problem);
+        addResultBlock("Etap 1: Przygotowanie problemu", preparation.toString());
 
-        text.append("MACIERZ ZYSKU JEDNOSTKOWEGO:\n");
-        appendHeader(text, problem);
+        StringBuilder profitMatrix = new StringBuilder();
+        profitMatrix.append("MACIERZ ZYSKU JEDNOSTKOWEGO:\n");
+        appendHeader(profitMatrix, problem);
         for (int i = 0; i < profits.length; i++) {
-            text.append(supplierName(problem, i)).append("\t");
+            profitMatrix.append(supplierName(problem, i)).append("\t");
             for (int j = 0; j < profits[i].length; j++) {
-                text.append(problem.getBlocked()[i][j] ? "X" : formatProfit(profits[i][j])).append("\t");
+                profitMatrix.append(problem.getBlocked()[i][j] ? "X" : formatProfit(profits[i][j])).append("\t");
             }
-            text.append("\n");
+            profitMatrix.append("\n");
         }
+        addResultBlock("Etap 2: Wyznaczenie macierzy zysków", profitMatrix.toString());
 
-        text.append("\nITERACJE METODY MAKSYMALNEGO ELEMENTU:\n");
+        StringBuilder maxElement = new StringBuilder();
         int counter = 1;
         for (IterationStep step : result.getSteps()) {
-            text.append(counter)
-                    .append(". ")
+            maxElement.append(counter)
+                    .append(". Wybrano trasę ")
                     .append(supplierName(problem, step.getSupplier()))
                     .append(" -> ")
                     .append(receiverName(problem, step.getReceiver()))
-                    .append(", zysk jedn.: ")
+                    .append("\nZysk jednostkowy: ")
                     .append(step.getProfit())
-                    .append(", przydział: ")
+                    .append("\nPrzydział: ")
                     .append(step.getAmount())
-                    .append("\n");
+                    .append("\n\n");
+            counter++;
+        }
+        addResultBlock("Etap 3: Metoda maksymalnego elementu", maxElement.toString());
+
+        counter = 1;
+        for (OptimizationStep step : result.getOptimizationSteps()) {
+            StringBuilder optimization = new StringBuilder();
+
+            optimization.append("Potencjały Alfa i:\n");
+            appendVector(optimization, step.getAlpha(), true, problem);
+
+            optimization.append("\nPotencjały Beta j:\n");
+            appendVector(optimization, step.getBeta(), false, problem);
+
+            optimization.append("\nDelty dla tras niebazowych Dij = Zij - Alfa i - Beta j:\n");
+            appendDeltaMatrix(optimization, step, problem);
+
+            if (step.isOptimal()) {
+                optimization.append("\nWszystkie delty są niedodatnie, więc rozwiązanie jest optymalne.\n");
+            } else {
+                optimization.append("\nWęzeł centralny: ")
+                        .append(supplierName(problem, step.getEnteringSupplier()))
+                        .append(" -> ")
+                        .append(receiverName(problem, step.getEnteringReceiver()))
+                        .append(", delta = ")
+                        .append(step.getDeltas()[step.getEnteringSupplier()][step.getEnteringReceiver()])
+                        .append("\n");
+
+                optimization.append("Pętla zmian (+/-), przesunięcie theta = ")
+                        .append(step.getTheta())
+                        .append(":\n");
+                appendCycleMatrix(optimization, step, problem);
+
+                optimization.append("\nPlan po zmianie:\n");
+                appendAllocationMatrix(optimization, step.getAllocationAfter(), problem);
+            }
+
+            addResultBlock("Etap 4." + counter + ": Optymalizacja rozwiązania", optimization.toString());
             counter++;
         }
 
-        appendOptimizationSteps(text, result, problem);
-
-        text.append("\nMACIERZ PRZYDZIAŁÓW:\n");
-        appendHeader(text, problem);
+        StringBuilder finalResult = new StringBuilder();
+        finalResult.append("MACIERZ PRZYDZIAŁÓW:\n");
+        appendHeader(finalResult, problem);
         for (int i = 0; i < allocation.length; i++) {
-            text.append(supplierName(problem, i)).append("\t");
+            finalResult.append(supplierName(problem, i)).append("\t");
             for (int j = 0; j < allocation[i].length; j++) {
-                text.append(allocation[i][j]).append("\t");
+                finalResult.append(allocation[i][j]).append("\t");
             }
-            text.append("\n");
+            finalResult.append("\n");
         }
 
-        text.append("\nŁączny zysk z funkcji celu: ").append(formatProfit(result.getTotalProfit()));
-        appendFinancialSummary(text, problem, allocation);
+        finalResult.append("\nŁączny zysk z funkcji celu: ").append(formatProfit(result.getTotalProfit()));
+        appendFinancialSummary(finalResult, problem, allocation);
         if (!result.isFeasible()) {
-            text.append("\n\nPozostały niezrealizowany popyt/podaż wynika najczęściej ze zbyt wielu blokad tras.");
+            finalResult.append("\n\nPozostały niezrealizowany popyt/podaż wynika najczęściej ze zbyt wielu blokad tras.");
         }
 
-        resultArea.setText(text.toString());
-        resultArea.setCaretPosition(0);
+        addResultBlock("Etap 5: Wynik końcowy", finalResult.toString());
+
+        resultStepsPanel.revalidate();
+        resultStepsPanel.repaint();
+    }
+
+    private void addResultBlock(String title, String content) {
+        JPanel block = new JPanel(new BorderLayout(6, 6));
+        block.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createEmptyBorder(6, 6, 6, 6),
+                BorderFactory.createTitledBorder(title)
+        ));
+
+        JTextArea area = new JTextArea(content);
+        area.setEditable(false);
+        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        area.setBackground(block.getBackground());
+        area.setLineWrap(false);
+
+        block.add(area, BorderLayout.CENTER);
+        resultStepsPanel.add(block);
     }
 
     private void appendBalanceInfo(StringBuilder text, TransportProblem problem) {
@@ -517,6 +582,15 @@ public class AppFrame extends JFrame {
         return "X".equalsIgnoreCase(value.trim());
     }
 
+    private boolean isBlockedSupplierValue(String value) {
+        String normalized = value.trim().toUpperCase();
+        return normalized.equals("X")
+                || normalized.equals("TAK")
+                || normalized.equals("T")
+                || normalized.equals("YES")
+                || normalized.equals("1");
+    }
+
     private int sum(int[] values) {
         int sum = 0;
         for (int value : values) {
@@ -541,7 +615,10 @@ public class AppFrame extends JFrame {
     }
 
     private void showError(String message) {
-        resultArea.setText(message);
+        resultStepsPanel.removeAll();
+        addResultBlock("Błąd danych wejściowych", message);
+        resultStepsPanel.revalidate();
+        resultStepsPanel.repaint();
         JOptionPane.showMessageDialog(this, message, "Niepoprawne dane", JOptionPane.ERROR_MESSAGE);
     }
 }
